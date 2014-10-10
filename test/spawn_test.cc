@@ -21,15 +21,17 @@
 
 #include "executor.h"
 #include "gtest/gtest.h"
+#include "local_queue_thread_pool_executor.h"
 #include "thread_pool_executor.h"
+#include "thread_per_task_executor.h"
 
 using namespace std;
 
 const int MAX_CONCURRENCY = 16;
-const int LOG_MAX_SPAWNS = 15;
+const int LOG_MAX_SPAWNS = 18;
 
-inline long long fib() {
-  constexpr int MAX_FIB = 100;
+inline void fib() {
+  constexpr int MAX_FIB = 4000;
   long long first = 0, second = 1;
   volatile long long next;
   for (int c = 0 ; c < MAX_FIB; c++ ) {
@@ -41,7 +43,6 @@ inline long long fib() {
       second = next;
     }
   }
-  return next;
 }
 
 TEST(SpawnTest, NoExecutor) {
@@ -70,7 +71,8 @@ TEST(SpawnTest, BasicSpawnBloom) {
   atomic_init(&spawn_count, 0);
   {
     experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY);
-    tpe.spawn(bind(&spn<decltype(tpe)>, ref(tpe), MAX_SPAWNS, ref(spawn_count)));
+    tpe.spawn(bind(&spn<decltype(tpe)>,
+                   ref(tpe), MAX_SPAWNS, ref(spawn_count)));
   }
   cout << "Total Spawns: " << spawn_count.load() << endl;
 }
@@ -84,44 +86,65 @@ class EmptyFunction {
 };
 
 TEST(SpawnTest, BigSpawn) {
-  constexpr int NUM_SPAWNERS = 8;
-  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS) / NUM_SPAWNERS;
+  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS);
 
   {
     // Custom thread pool functor (saves the cost of type erasure, but requires
     // a type-erased executor).
     experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY);
-    for (int i = 0; i < NUM_SPAWNERS; ++i) {
-      tpe.spawn([=, &tpe] {
-        EmptyFunction fn;
-        for (int i = 0; i < MAX_SPAWNS; ++i) {
-          tpe.spawn(fn);
-        }
-      });
+    for (int i = 0; i < MAX_SPAWNS; ++i) {
+      tpe.spawn(&fib);
     }
   }
-  cout << "Total Spawns: " << NUM_SPAWNERS * MAX_SPAWNS << endl;
+  cout << "Total Spawns: " << MAX_SPAWNS << endl;
+}
+
+TEST(SpawnTest, BigSpawnThreadPerTask) {
+  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS);
+
+  {
+    experimental::thread_per_task_executor& tpte =
+        experimental::thread_per_task_executor::get_executor();
+    for (int i = 0; i < MAX_SPAWNS; ++i) {
+      tpte.spawn(&fib);
+    }
+  }
+  cout << "Total Spawns: " << MAX_SPAWNS << endl;
+}
+
+
+TEST(SpawnTest, BigSpawnLocalQueues) {
+  constexpr int BATCH_COUNT = 16;
+  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS) / BATCH_COUNT;
+
+  {
+    // Custom thread pool functor (saves the cost of type erasure, but requires
+    // a type-erased executor).
+    experimental::local_queue_thread_pool_executor<> lqtpe(MAX_CONCURRENCY);
+    for (int b = 0; b < BATCH_COUNT; ++b) {
+      vector<void(*)()> batch(MAX_SPAWNS);
+      for (int i = 0; i < MAX_SPAWNS; ++i) {
+        batch.push_back(&fib);
+      }
+      lqtpe.spawn_all(batch);
+    }
+  }
+  cout << "Total Spawns: " << MAX_SPAWNS * BATCH_COUNT << endl;
 }
 
 TEST(SpawnTest, BigSpawnCustomWrapper) {
-  constexpr int NUM_SPAWNERS = 2;
-  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS) / NUM_SPAWNERS;
+  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS);
 
   {
     // Custom thread pool functor (saves the cost of type erasure, but requires
     // a type-erased executor).
     experimental::thread_pool_executor<EmptyFunction> tpe(MAX_CONCURRENCY);
-    experimental::thread_pool_executor<> spawn_pool(NUM_SPAWNERS);
-    for (int i = 0; i < NUM_SPAWNERS; ++i) {
-      spawn_pool.spawn([=, &tpe] {
-        EmptyFunction fn;
-        for (int i = 0; i < MAX_SPAWNS; ++i) {
-          tpe.spawn(fn);
-        }
-      });
+    EmptyFunction fn;
+    for (int i = 0; i < MAX_SPAWNS; ++i) {
+      tpe.spawn(fn);
     }
   }
-  cout << "Total Spawns: " << NUM_SPAWNERS * MAX_SPAWNS << endl;
+  cout << "Total Spawns: " << MAX_SPAWNS << endl;
 }
 
 TEST(SpawnTest, MutexingCounter) {
@@ -153,14 +176,14 @@ TEST(SpawnTest, MutexingFunctionCounter) {
   mutex mu;
   int counter;
   for (int i = 0; i < MAX_CONCURRENCY; ++i) {
-    std::function<void()> f([=, &mu, &counter] {
+    threads.emplace_back([=, &mu, &counter] {
       for (int i = 0; i < MAX_SPAWNS; ++i) {
-        fib();
+        std::function<void()> f([] { fib(); });
+        f();
         unique_lock<mutex> lock(mu);
         counter++;
       }
     });
-    threads.emplace_back(f);
   }
 
   for (auto& t : threads) {

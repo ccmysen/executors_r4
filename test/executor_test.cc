@@ -114,9 +114,10 @@ TEST(ExecutorTest, ErasedExecutors) {
     this_thread::sleep_for(chrono::milliseconds(1));
   }
   EXPECT_EQ(NUM_ITER, run_count.load());
+
+  exec.spawn([&run_count] {run_count++;});
 }
 
 TEST(ExecutorTest, SpawnContinuation) {
   experimental::thread_pool_executor<> tpe(1);
-
 }

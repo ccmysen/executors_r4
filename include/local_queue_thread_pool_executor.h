@@ -1,9 +1,10 @@
-#ifndef THREAD_POOL_EXECUTOR_H
-#define THREAD_POOL_EXECUTOR_H
+#ifndef LOCAL_QUEUE_THREAD_POOL_EXECUTOR_H
+#define LOCAL_QUEUE_THREAD_POOL_EXECUTOR_H
 
 #include <iostream>
 
 #include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -15,23 +16,27 @@ namespace std {
 namespace experimental {
 
 // Default to the type erasing wrapper.
-// Add an allocator to the template to allow custom allocation of internal objects?
+// Add an allocator to the template to allow custom allocation of internal
+// objects?
 template <class Wrapper=function_wrapper>
-class thread_pool_executor {
+class local_queue_thread_pool_executor {
  public:
   // thread pools are not copyable/default constructable
-  thread_pool_executor() = delete;
-  thread_pool_executor(const thread_pool_executor&) = delete;
+  local_queue_thread_pool_executor() = delete;
+  local_queue_thread_pool_executor(
+      const local_queue_thread_pool_executor&) = delete;
 
-  explicit thread_pool_executor(size_t N)
-      : threads_(N), {
+  explicit local_queue_thread_pool_executor(size_t N)
+      : threads_(N) {
     atomic_init(&in_shutdown_, NOT_SHUTDOWN);
+    atomic_init(&spawn_count_, 0);
     for (size_t i = 0; i < N; ++i) {
-      threads_.emplace_back(std::bind(&thread_pool_executor::run_thread, this));
+      threads_.emplace_back(std::bind(
+          &local_queue_thread_pool_executor::run_thread, this));
     }
   }
 
-  virtual ~thread_pool_executor() {
+  virtual ~local_queue_thread_pool_executor() {
     set_shutdown(SOFT_SHUTDOWN);
 
     // Shut down the workers
@@ -61,8 +66,9 @@ class thread_pool_executor {
 
     bool notify = work_queue_.empty();
     for (auto&& func : functions) {
-      work_queue_.emplace(forward<Func>(func));
+      work_queue_.emplace(forward<typename Collect::value_type>(func));
     }
+    cout << "Add batch" << endl;
     queue_lock.unlock();
 
     if (notify) {
@@ -82,7 +88,7 @@ class thread_pool_executor {
     queue_lock.unlock();
 
     if (notify) {
-      queue_empty_cv_.notify_all();
+      queue_empty_cv_.notify_one();
     }
   }
 
@@ -95,31 +101,61 @@ class thread_pool_executor {
 
   // Allow a thread to request tasks from the main queue. If there isn't much
   // contention on the main queue then this should be relatively cheap.
-  bool transfer_tasks(queue<Wrapper>& dest_queue) {
-    unique_lock<mutex> queue_lock(work_queue_mu_);
-    queue_empty_cv_.wait(
-        queue_lock, [this]{ return in_shutdown() || !work_queue_.empty(); });
-    // Really nothing to do
+  // Returns true if any tasks were transferred.
+  //
+  // NOTE: this assumes the caller has taken the queue lock.
+  bool transfer_tasks(deque<Wrapper>& dest_queue, int max_tasks) {
+    // Really nothing to do if shutting down or empty queue
     if ((in_shutdown() && work_queue_.empty()) || in_hard_shutdown()) {
       return false;
     }
 
-    
+    // Special logic for deciding how many tasks to transfer, just a rough
+    // algorithm to avoid transferring too many tasks to any given thread (hard
+    // to know for sure). This is in lieu of an actual work stealing algorithm.
+    int transfer_tasks = max_tasks;
+    int queue_size = work_queue_.size();
+    if (queue_size <= 2) {
+      transfer_tasks = queue_size;
+    } else if ((2*transfer_tasks) > queue_size) {
+      // roughly 1/3 to prevent a single thread from being the long pole
+      transfer_tasks = queue_size / 3 + 1;
+    } // else just transfer the total requested.
 
+    for (int i = 0; i < transfer_tasks && !in_hard_shutdown(); ++i) {
+      dest_queue.push_back(move(work_queue_.front()));
+      work_queue_.pop();
+    }
+
+    return true;
   }
 
-  bool release_tasks() {
-
-  }
+  // Function to put tasks back on the work queue?
+  // Could also potentially have thread local mutexes that mean uncontended
+  // mutexing in the common case (pull model for work stealing with no global
+  // queue).
+  bool release_tasks() {}
 
   void run_thread() {
-    while (true) {
-      Wrapper next_fn(move(work_queue_.front()));
-      work_queue_.pop();
-      queue_lock.unlock();
+    deque<Wrapper> local_queue;
+    constexpr int NUM_TRANSFER_TASKS = 100;
 
-      // Now run it.
-      next_fn();
+    while (true) {
+      while (!local_queue.empty()) {
+        Wrapper next_fn(local_queue.front());
+        local_queue.pop_front();
+      }
+
+      // Exhausted the local queue, so transfer more tasks.
+      unique_lock<mutex> queue_lock(work_queue_mu_);
+      queue_empty_cv_.wait(
+          queue_lock, [this]{ return in_shutdown() || !work_queue_.empty(); });
+      if ((in_shutdown() && work_queue_.empty()) ||
+          in_shutdown_ == HARD_SHUTDOWN) {
+        break;
+      }
+      transfer_tasks(local_queue, NUM_TRANSFER_TASKS);
+      queue_lock.unlock();
     }
   }
 
@@ -135,7 +171,7 @@ class thread_pool_executor {
   void set_shutdown(int shutdown_type) {
     int expected = NOT_SHUTDOWN;
     bool exchanged =
-        in_shutdown_.compare_exchange_strong(&expected, shutdown_type);
+        in_shutdown_.compare_exchange_strong(expected, shutdown_type);
     if (!exchanged) return;
     queue_empty_cv_.notify_all();
   }
@@ -143,8 +179,9 @@ class thread_pool_executor {
   vector<thread> threads_;
   mutex work_queue_mu_;
   condition_variable queue_empty_cv_;
-  deque<Wrapper> work_queue_;
+  queue<Wrapper> work_queue_;
   atomic<int> in_shutdown_;
+  atomic<int> spawn_count_;
 };
 
 }  // namespace experimental

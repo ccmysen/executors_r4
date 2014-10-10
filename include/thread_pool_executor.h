@@ -26,7 +26,8 @@ class thread_pool_executor {
   thread_pool_executor() = delete;
   thread_pool_executor(const thread_pool_executor&) = delete;
 
-  explicit thread_pool_executor(size_t N) : threads_(N), in_shutdown_(NOT_SHUTDOWN) {
+  explicit thread_pool_executor(size_t N)
+      : threads_(N), in_shutdown_(NOT_SHUTDOWN) {
     for (size_t i = 0; i < N; ++i) {
       threads_.emplace_back(std::bind(&thread_pool_executor::run_thread, this));
     }
@@ -67,7 +68,7 @@ class thread_pool_executor {
     queue_lock.unlock();
 
     if (notify) {
-      queue_empty_cv_.notify_all();
+      queue_empty_cv_.notify_one();
     }
   }
 

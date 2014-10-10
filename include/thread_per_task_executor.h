@@ -1,6 +1,7 @@
 #ifndef THREAD_PER_TASK_EXECUTOR_H
 #define THREAD_PER_TASK_EXECUTOR_H
 
+#include <map>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -20,21 +21,16 @@ class thread_per_task_executor {
     return instance;
   }
 
-  virtual ~thread_per_task_executor() {
-    for (thread& t : thread_vec) {
-      if (t.joinable())
-        t.join();
-    }
-  }
+  virtual ~thread_per_task_executor() {}
 
  public:
   template<class Func>
-  inline void spawn(Func&& closure) {
-    thread_vec.emplace_back(forward<Func>(closure));
+  inline void spawn(Func&& func) {
+    thread t(forward<Func>(func));
+    t.detach();
   }
 
  private:
-  vector<thread> thread_vec;
   thread_per_task_executor() {}
 };
 
