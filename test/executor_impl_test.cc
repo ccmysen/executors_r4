@@ -155,6 +155,36 @@ TEST(ThreadPoolExecutorTest, ConcurrencyTest) {
   EXPECT_EQ(MAX_CONCURRENCY, mct2.max_concurrency());
 }
 
+TEST(LocalQueueThreadPoolExecutorTest, ConcurrencyTest) {
+  constexpr int NUM_TASKS = 20;
+  constexpr int MAX_CONCURRENCY = 10;
+  max_counter_task mct(MAX_CONCURRENCY + 1);
+  max_counter_task mct2(MAX_CONCURRENCY);
+  experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY);
+
+  // Force all tasks to wait until signalled by the test.
+  for (int i = 0; i < MAX_CONCURRENCY; ++i) {
+    tpe.spawn(bind(&max_counter_task::operator(), &mct));
+  }
+  for (int i = 0; i < (NUM_TASKS - MAX_CONCURRENCY); ++i) {
+    tpe.spawn(bind(&max_counter_task::operator(), &mct2));
+  }
+
+  // Wait until the test is the only signal remaining.
+  while (mct.release_count() > 1) {
+    this_thread::sleep_for(chrono::milliseconds(10));
+  }
+  // This should be 10 since that's the concurrency of the pool.
+  EXPECT_EQ(MAX_CONCURRENCY, mct.max_concurrency());
+  // Expect no executions on mct2 yet.
+  EXPECT_EQ(0, mct2.max_concurrency());
+  mct.release();
+
+  while (mct2.release_count() > 0) {
+    this_thread::sleep_for(chrono::milliseconds(10));
+  }
+  EXPECT_EQ(MAX_CONCURRENCY, mct2.max_concurrency());
+}
 TEST(SerialExecutorTest, ConcurrencyTest) {
   constexpr int NUM_TASKS = 20;
   constexpr int MAX_CONCURRENCY = 1;

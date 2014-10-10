@@ -79,7 +79,7 @@ class local_queue_thread_pool_executor {
  public:
   // Executor interface
   template<class Func>
-  void spawn(Func&& func) {
+  inline void spawn(Func&& func) {
     unique_lock<mutex> queue_lock(work_queue_mu_);
     if (in_hard_shutdown()) return;
 

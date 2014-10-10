@@ -22,6 +22,7 @@
 #include "executor.h"
 #include "gtest/gtest.h"
 #include "local_queue_thread_pool_executor.h"
+#include "randomized_thread_pool_executor.h"
 #include "thread_pool_executor.h"
 #include "thread_per_task_executor.h"
 
@@ -112,6 +113,18 @@ TEST(SpawnTest, BigSpawnThreadPerTask) {
   cout << "Total Spawns: " << MAX_SPAWNS << endl;
 }
 
+TEST(SpawnTest, BigSpawnRandomiedThreadPool) {
+  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS);
+
+  {
+    // thread pools block waiting for tasks upon shutdown.
+    experimental::randomized_thread_pool_executor<> rtpe(MAX_CONCURRENCY);
+    for (int i = 0; i < MAX_SPAWNS; ++i) {
+      rtpe.spawn(&fib);
+    }
+  }
+  cout << "Total Spawns: " << MAX_SPAWNS << endl;
+}
 
 TEST(SpawnTest, BigSpawnLocalQueues) {
   constexpr int BATCH_COUNT = 16;
