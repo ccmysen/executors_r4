@@ -2,6 +2,7 @@
 #define EXECUTOR_HELPER_H
 
 #include <iostream>
+#include <mutex>
 #include <utility>
 
 namespace std {
@@ -13,7 +14,9 @@ class function_wrapper {
  public:
   function_wrapper() = delete;
   function_wrapper(const function_wrapper&) = delete;
-  function_wrapper(function_wrapper&& other) : wrapped_(move(other.wrapped_)) {}
+  function_wrapper(function_wrapper&& other) {
+    wrapped_.reset(other.wrapped_.release());
+  }
   virtual ~function_wrapper() {}
 
   template <typename T>

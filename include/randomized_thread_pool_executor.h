@@ -14,10 +14,9 @@
 namespace std {
 namespace experimental {
 
-template <class Wrapper=function_wrapper>
 class randomized_thread_pool_executor {
- public:
-  typedef Wrapper wrapper_type;
+ private:
+  typedef function_wrapper wrapper_type;
 
  public:
   // thread pools are not copyable/default constructable
@@ -28,11 +27,11 @@ class randomized_thread_pool_executor {
   explicit randomized_thread_pool_executor(size_t N)
       : threads_(N), NUM_THREADS(N) {
     for (size_t i = 0; i < N; ++i) {
-      queues_.emplace_back();
+      blocking_queue* q = new blocking_queue();
+      queues_.emplace_back(q);
       threads_.emplace_back(
           std::bind(&randomized_thread_pool_executor::run_thread,
-                    this,
-                    ref(queues_.back()))
+                    this, q)
       );
     }
 
@@ -52,7 +51,7 @@ class randomized_thread_pool_executor {
   template<class Func>
   void spawn(Func&& func) {
     int queue_idx = get_next_queue();
-    queues_[queue_idx].add(forward<Func>(func));
+    queues_[queue_idx]->add(forward<Func>(func));
   }
 
  private:
@@ -64,18 +63,28 @@ class randomized_thread_pool_executor {
 
   class blocking_queue {
    public:
-    blocking_queue() : shutdown_(NOT_SHUTDOWN) {}
+    blocking_queue() {
+      unique_lock<mutex> queue_lock(work_queue_mu_);
+      shutdown_ = NOT_SHUTDOWN;
+    }
     blocking_queue(const blocking_queue&) = delete;
     blocking_queue(blocking_queue&& other)
-        : work_queue_(move(other.work_queue_)), shutdown_(other.shutdown_) {}
+        : work_queue_(move(other.work_queue_)) {
+      unique_lock<mutex> other_queue_lock(other.work_queue_mu_);
+      unique_lock<mutex> queue_lock(work_queue_mu_);
+      shutdown_ = other.shutdown_;
+    }
+
     ~blocking_queue() {}
 
     template <typename Func>
     void add(Func&& func) {
-      unique_lock<mutex> queue_lock(work_queue_mu_);
-      if (shutdown_ == HARD_SHUTDOWN) return;
-
-      work_queue_.emplace(forward<Func>(func));
+      {
+        unique_lock<mutex> queue_lock(work_queue_mu_);
+        if (shutdown_ == HARD_SHUTDOWN) return;
+        work_queue_.emplace(forward<Func>(func));
+      }
+      queue_empty_cv_.notify_one();
     }
 
     // What to return if shutdown_ is set??
@@ -97,13 +106,13 @@ class randomized_thread_pool_executor {
 
     // If wait_for_get returned true, then you must call this to release the
     // lock.
-    Wrapper&& get() {
+    wrapper_type get() {
       // Assume the lock is still held...
       lock_guard<mutex> guard(work_queue_mu_, std::adopt_lock);
 
-      Wrapper front(forward<Wrapper>(work_queue_.front()));
+      wrapper_type front(forward<wrapper_type>(work_queue_.front()));
       work_queue_.pop();
-      return move(front);
+      return front;
     }
 
     void set_shutdown(int shutdown_type) {
@@ -123,7 +132,7 @@ class randomized_thread_pool_executor {
    private:
     mutex work_queue_mu_;
     condition_variable queue_empty_cv_;
-    queue<Wrapper> work_queue_;
+    queue<wrapper_type> work_queue_;
     int shutdown_;
   };
 
@@ -140,7 +149,7 @@ class randomized_thread_pool_executor {
 
   void do_shutdown(int shutdown_type) {
     for (size_t i = 0; i < NUM_THREADS; ++i) {
-      queues_[i].set_shutdown(shutdown_type);
+      queues_[i]->set_shutdown(shutdown_type);
     }
 
     // Shut down the workers
@@ -152,21 +161,21 @@ class randomized_thread_pool_executor {
     }
   } 
 
-  void run_thread(blocking_queue& thread_queue) {
+  void run_thread(blocking_queue* thread_queue) {
     while (true) {
-      if (!thread_queue.wait_for_get()) {
+      if (!thread_queue->wait_for_get()) {
         break;
       }
 
       // Run the front of the queue.
-      (thread_queue.get())();
+      wrapper_type wrap = thread_queue->get();
+      wrap();
     }
   }
 
   vector<thread> threads_;
-  vector<blocking_queue> queues_;
+  vector<unique_ptr<blocking_queue>> queues_;
   mutex work_queue_mu_;
-  int in_shutdown_;
   atomic<int> next_queue_;
   const size_t NUM_THREADS;
 };

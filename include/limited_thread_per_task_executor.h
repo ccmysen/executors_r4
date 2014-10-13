@@ -25,7 +25,8 @@ class limited_thread_per_task_executor {
  public:
   template<class Func>
   inline void spawn(Func&& func) {
-    // Approximate thread count capping since we aren't actually blocking someone from increasing the count
+    // Approximate thread count capping since we aren't actually blocking
+    // someone from increasing the count
     while (true) {
       int count = thread_count_.load();
       if (count > MAX_THREADS) {

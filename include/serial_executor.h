@@ -15,6 +15,9 @@ namespace experimental {
 template <typename Exec>
 class serial_executor {
  public:
+  typedef typename Exec::wrapper_type wrapper_type;
+
+ public:
   explicit serial_executor(Exec& underlying_executor)
     : underlying_executor_(underlying_executor),
       in_shutdown_(false),
@@ -81,7 +84,7 @@ class serial_executor {
   // Assumes that the work queue mutex is already locked by the caller.
   inline void start_next_task() {
     if (!work_queue_.empty() && last_task_done_) {
-      last_task_done_ = false;  // set up the exclusion on sstarting work.
+      last_task_done_ = false;  // set up the exclusion on starting work.
       spawn_task<typename Exec::wrapper_type> task(
           move(work_queue_.front()), this);
       work_queue_.pop();

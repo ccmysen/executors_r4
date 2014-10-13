@@ -16,10 +16,9 @@ namespace experimental {
 
 // Default to the type erasing wrapper.
 // TODO: Add an allocator to the template to allow custom allocation of internal objects?
-template <class Wrapper=function_wrapper>
 class thread_pool_executor {
  public:
-  typedef Wrapper wrapper_type;
+  typedef function_wrapper wrapper_type;
 
  public:
   // thread pools are not copyable/default constructable
@@ -88,7 +87,7 @@ class thread_pool_executor {
         break;
       }
 
-      Wrapper next_fn(move(work_queue_.front()));
+      wrapper_type next_fn(move(work_queue_.front()));
       work_queue_.pop();
       queue_lock.unlock();
 
@@ -118,7 +117,7 @@ class thread_pool_executor {
   vector<thread> threads_;
   mutex work_queue_mu_;
   condition_variable queue_empty_cv_;
-  queue<Wrapper> work_queue_;
+  queue<wrapper_type> work_queue_;
   int in_shutdown_;
 };
 

@@ -28,7 +28,7 @@
 
 using namespace std;
 
-const int MAX_CONCURRENCY = 16;
+const int MAX_CONCURRENCY = 8;
 const int LOG_MAX_SPAWNS = 18;
 
 inline void fib() {
@@ -71,7 +71,7 @@ TEST(SpawnTest, BasicSpawnBloom) {
   atomic<int> spawn_count;
   atomic_init(&spawn_count, 0);
   {
-    experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY);
+    experimental::thread_pool_executor tpe(MAX_CONCURRENCY);
     tpe.spawn(bind(&spn<decltype(tpe)>,
                    ref(tpe), MAX_SPAWNS, ref(spawn_count)));
   }
@@ -92,7 +92,7 @@ TEST(SpawnTest, BigSpawn) {
   {
     // Custom thread pool functor (saves the cost of type erasure, but requires
     // a type-erased executor).
-    experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY);
+    experimental::thread_pool_executor tpe(MAX_CONCURRENCY);
     for (int i = 0; i < MAX_SPAWNS; ++i) {
       tpe.spawn(&fib);
     }
@@ -113,12 +113,12 @@ TEST(SpawnTest, BigSpawnThreadPerTask) {
   cout << "Total Spawns: " << MAX_SPAWNS << endl;
 }
 
-TEST(SpawnTest, BigSpawnRandomiedThreadPool) {
+TEST(SpawnTest, BigSpawnRandomizedThreadPool) {
   constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS);
 
   {
     // thread pools block waiting for tasks upon shutdown.
-    experimental::randomized_thread_pool_executor<> rtpe(MAX_CONCURRENCY);
+    experimental::randomized_thread_pool_executor rtpe(MAX_CONCURRENCY);
     for (int i = 0; i < MAX_SPAWNS; ++i) {
       rtpe.spawn(&fib);
     }
@@ -133,7 +133,7 @@ TEST(SpawnTest, BigSpawnLocalQueues) {
   {
     // Custom thread pool functor (saves the cost of type erasure, but requires
     // a type-erased executor).
-    experimental::local_queue_thread_pool_executor<> lqtpe(MAX_CONCURRENCY);
+    experimental::local_queue_thread_pool_executor lqtpe(MAX_CONCURRENCY);
     for (int b = 0; b < BATCH_COUNT; ++b) {
       vector<void(*)()> batch(MAX_SPAWNS);
       for (int i = 0; i < MAX_SPAWNS; ++i) {
@@ -143,21 +143,6 @@ TEST(SpawnTest, BigSpawnLocalQueues) {
     }
   }
   cout << "Total Spawns: " << MAX_SPAWNS * BATCH_COUNT << endl;
-}
-
-TEST(SpawnTest, BigSpawnCustomWrapper) {
-  constexpr int MAX_SPAWNS = (1<<LOG_MAX_SPAWNS);
-
-  {
-    // Custom thread pool functor (saves the cost of type erasure, but requires
-    // a type-erased executor).
-    experimental::thread_pool_executor<EmptyFunction> tpe(MAX_CONCURRENCY);
-    EmptyFunction fn;
-    for (int i = 0; i < MAX_SPAWNS; ++i) {
-      tpe.spawn(fn);
-    }
-  }
-  cout << "Total Spawns: " << MAX_SPAWNS << endl;
 }
 
 TEST(SpawnTest, MutexingCounter) {

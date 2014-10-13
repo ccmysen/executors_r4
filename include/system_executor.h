@@ -36,7 +36,7 @@ class system_executor {
 
   system_executor(size_t N) : pool_(N) {}
 
-  thread_pool_executor<> pool_;
+  thread_pool_executor pool_;
 };
 
 }  // namespace experimental

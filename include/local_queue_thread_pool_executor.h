@@ -18,8 +18,10 @@ namespace experimental {
 // Default to the type erasing wrapper.
 // Add an allocator to the template to allow custom allocation of internal
 // objects?
-template <class Wrapper=function_wrapper>
 class local_queue_thread_pool_executor {
+ public:
+  typedef function_wrapper wrapper_type;
+
  public:
   // thread pools are not copyable/default constructable
   local_queue_thread_pool_executor() = delete;
@@ -104,7 +106,7 @@ class local_queue_thread_pool_executor {
   // Returns true if any tasks were transferred.
   //
   // NOTE: this assumes the caller has taken the queue lock.
-  bool transfer_tasks(deque<Wrapper>& dest_queue, int max_tasks) {
+  bool transfer_tasks(deque<wrapper_type>& dest_queue, int max_tasks) {
     // Really nothing to do if shutting down or empty queue
     if ((in_shutdown() && work_queue_.empty()) || in_hard_shutdown()) {
       return false;
@@ -130,19 +132,13 @@ class local_queue_thread_pool_executor {
     return true;
   }
 
-  // Function to put tasks back on the work queue?
-  // Could also potentially have thread local mutexes that mean uncontended
-  // mutexing in the common case (pull model for work stealing with no global
-  // queue).
-  bool release_tasks() {}
-
   void run_thread() {
-    deque<Wrapper> local_queue;
+    deque<wrapper_type> local_queue;
     constexpr int NUM_TRANSFER_TASKS = 100;
 
     while (true) {
       while (!local_queue.empty()) {
-        Wrapper next_fn(local_queue.front());
+        wrapper_type next_fn(local_queue.front());
         local_queue.pop_front();
       }
 
@@ -179,7 +175,7 @@ class local_queue_thread_pool_executor {
   vector<thread> threads_;
   mutex work_queue_mu_;
   condition_variable queue_empty_cv_;
-  queue<Wrapper> work_queue_;
+  queue<wrapper_type> work_queue_;
   atomic<int> in_shutdown_;
   atomic<int> spawn_count_;
 };

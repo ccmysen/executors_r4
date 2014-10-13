@@ -33,16 +33,31 @@ thread::id get_id() {
   return this_thread::get_id();
 }
 
+int get_next_id(atomic<int>& id_gen) {
+  int old_id = id_gen.load();
+  while (!id_gen.compare_exchange_strong(old_id, old_id + 1)) {}
+  return old_id;
+}
+
 TEST(ExecutorTest, SpawnFuture) {
   experimental::thread_per_task_executor& tpte =
     experimental::thread_per_task_executor::get_executor();
+  atomic<int> id_gen;
+  atomic_init(&id_gen, 0);
 
   constexpr int NUM_ITER = 100;
-  set<thread::id> ids;
+  vector<future<int>> futures;
   for (int i = 0; i < NUM_ITER; ++i) {
-    auto fut = experimental::spawn_future(tpte,
-        experimental::make_package(&get_id));
-    ids.insert(fut.get());
+    futures.emplace_back(move(experimental::spawn_future(tpte,
+        experimental::make_package(bind(&get_next_id, ref(id_gen))))));
+  }
+
+  EXPECT_EQ(NUM_ITER, futures.size());
+
+  set<int> ids;
+  for (int i = 0; i < futures.size(); ++i) {
+    int id = futures[i].get();
+    ids.insert(id);
   }
 
   EXPECT_EQ(NUM_ITER, ids.size());
@@ -51,12 +66,14 @@ TEST(ExecutorTest, SpawnFuture) {
 TEST(ExecutorTest, ExecutorRefSpawnFuture) {
   experimental::executor_ref<experimental::thread_per_task_executor> tpte_ref(
       experimental::thread_per_task_executor::get_executor());
+  atomic<int> id_gen;
+  atomic_init(&id_gen, 0);
 
   constexpr int NUM_ITER = 100;
-  set<thread::id> ids;
+  set<int> ids;
   for (int i = 0; i < NUM_ITER; ++i) {
     auto fut = experimental::spawn_future(tpte_ref,
-        experimental::make_package(&get_id));
+        experimental::make_package(bind(&get_next_id, ref(id_gen))));
     ids.insert(fut.get());
   }
 
@@ -64,9 +81,9 @@ TEST(ExecutorTest, ExecutorRefSpawnFuture) {
 }
 
 TEST(ExecutorTest, ExecutorRefCopy) {
-  experimental::thread_pool_executor<> tpe(1);
-  experimental::executor_ref<experimental::thread_pool_executor<>> tpe_ref(tpe);
-  experimental::executor_ref<experimental::thread_pool_executor<>> tpe_ref2(
+  experimental::thread_pool_executor tpe(1);
+  experimental::executor_ref<experimental::thread_pool_executor> tpe_ref(tpe);
+  experimental::executor_ref<experimental::thread_pool_executor> tpe_ref2(
       tpe_ref);
   
   // Should be enough to check the contained executors.
@@ -91,7 +108,7 @@ TEST(ExecutorTest, ExecutorRefCopy) {
 }
 
 TEST(ExecutorTest, ErasedExecutors) {
-  experimental::thread_pool_executor<> tpe(1);
+  experimental::thread_pool_executor tpe(1);
   // The erased executor should work just the same as any other executor but
   // requires that a function_wrapper be passed in.
   experimental::executor exec(tpe);
@@ -119,5 +136,5 @@ TEST(ExecutorTest, ErasedExecutors) {
 }
 
 TEST(ExecutorTest, SpawnContinuation) {
-  experimental::thread_pool_executor<> tpe(1);
+  experimental::thread_pool_executor tpe(1);
 }

@@ -48,6 +48,8 @@ task_wrapper<Exec, Func>&& set_executor(Exec& exec, Func&& func) {
 template <typename Exec, typename CopyEnable=void>
 class executor_ref {
  public:
+  typedef typename Exec::wrapper_type wrapper_type;
+ public:
   executor_ref() = delete;
   executor_ref(Exec& exec) : exec_(exec) {}
   executor_ref(const executor_ref& other) : exec_(other.exec_) {}
@@ -71,7 +73,10 @@ class executor_ref {
 // unnecessarily.
 template <typename Exec>
 class executor_ref<Exec,
-                   typename enable_if<is_copy_constructible<Exec>::value>::type> {
+                   typename enable_if<is_copy_constructible<Exec>::value>::type>
+{
+ public:
+  typedef typename Exec::wrapper_type wrapper_type;
  public:
   executor_ref() = delete;
   executor_ref(Exec& exec) : exec_(exec) {}
@@ -94,6 +99,8 @@ class executor_ref<Exec,
 // Fully type erased executor which ends up taking in a concrete wrapper which
 // can accept both normal and move-only types.
 class executor {
+ public:
+  typedef function_wrapper wrapper_type;
  public:
   executor() = delete;
   executor(executor& other) = delete;
@@ -142,6 +149,9 @@ inline future<T> spawn_future(Exec&& exec, packaged_task<T()>&& func) {
 
 template <typename Exec, typename Func, typename Continuation>
 void spawn(Exec&& exec, Func&& func, Continuation&& continuation) {
+  // TODO: create a container which actually supports move-only objects.
+  // Currently this wont move the function which is passed in, only make a
+  // reference to it.
   exec.spawn([&] { func(); continuation(); });
 }
 

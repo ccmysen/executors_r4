@@ -10,14 +10,13 @@
 namespace std {
 namespace experimental {
 
-template <class Wrapper=function_wrapper>
 class loop_executor {
  public:
-  typedef Wrapper wrapper_type;
+  typedef function_wrapper wrapper_type;
 
  public:
   explicit loop_executor()
-    : work_queue_(new queue<Wrapper>()) {
+    : work_queue_(new queue<wrapper_type>()) {
     atomic_init(&exit_loop_signal_, false);
     atomic_init(&run_lock_, false);
   }
@@ -49,8 +48,8 @@ class loop_executor {
     // lock so the wording on the loop_executor might be a little too strict
     // w.r.t. ordering of spawn vs. loop.
     unique_lock<mutex> queue_lock(work_queue_mu_);
-    unique_ptr<queue<Wrapper>> active_queue(
-        new queue<Wrapper>());
+    unique_ptr<queue<wrapper_type>> active_queue(
+        new queue<wrapper_type>());
     // Active queue becomes a local queue so we can work on it.
     active_queue.swap(work_queue_);
     queue_lock.unlock();
@@ -137,7 +136,7 @@ class loop_executor {
   condition_variable queue_empty_cv_;
 
   // Ideally manage the queue internally to the task itself.
-  unique_ptr<queue<Wrapper>> work_queue_;
+  unique_ptr<queue<wrapper_type>> work_queue_;
   condition_variable loop_signal_cv_;
   atomic<bool> exit_loop_signal_;
   atomic<bool> run_lock_;

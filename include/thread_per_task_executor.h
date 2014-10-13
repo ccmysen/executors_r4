@@ -26,6 +26,8 @@ class thread_per_task_executor {
  public:
   template<class Func>
   inline void spawn(Func&& func) {
+    // TODO: figure out a semantic for the cleanup of threads in TPTE, since
+    // they're not obvious.
     thread t(forward<Func>(func));
     t.detach();
   }

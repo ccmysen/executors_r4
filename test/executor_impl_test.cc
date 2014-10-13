@@ -129,7 +129,7 @@ TEST(ThreadPoolExecutorTest, ConcurrencyTest) {
   constexpr int MAX_CONCURRENCY = 10;
   max_counter_task mct(MAX_CONCURRENCY + 1);
   max_counter_task mct2(MAX_CONCURRENCY);
-  experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY);
+  experimental::thread_pool_executor tpe(MAX_CONCURRENCY);
 
   // Force all tasks to wait until signalled by the test.
   for (int i = 0; i < MAX_CONCURRENCY; ++i) {
@@ -160,7 +160,7 @@ TEST(LocalQueueThreadPoolExecutorTest, ConcurrencyTest) {
   constexpr int MAX_CONCURRENCY = 10;
   max_counter_task mct(MAX_CONCURRENCY + 1);
   max_counter_task mct2(MAX_CONCURRENCY);
-  experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY);
+  experimental::thread_pool_executor tpe(MAX_CONCURRENCY);
 
   // Force all tasks to wait until signalled by the test.
   for (int i = 0; i < MAX_CONCURRENCY; ++i) {
@@ -189,8 +189,8 @@ TEST(SerialExecutorTest, ConcurrencyTest) {
   constexpr int NUM_TASKS = 20;
   constexpr int MAX_CONCURRENCY = 1;
   max_counter_task mct(MAX_CONCURRENCY + 1);
-  experimental::thread_pool_executor<> tpe(MAX_CONCURRENCY + 5);
-  experimental::serial_executor<experimental::thread_pool_executor<>> se(tpe);
+  experimental::thread_pool_executor tpe(MAX_CONCURRENCY + 5);
+  experimental::serial_executor<experimental::thread_pool_executor> se(tpe);
 
   for (int i = 0; i < NUM_TASKS; ++i) {
     // Continuation which resets the counter before the next task starts up.
@@ -223,7 +223,7 @@ TEST(LoopExecutorTest, ConcurrencyTest) {
   constexpr int NUM_TASKS = 5;
   constexpr int MAX_CONCURRENCY = 1;
   max_counter_task mct(MAX_CONCURRENCY + 1);
-  experimental::loop_executor<> le;
+  experimental::loop_executor le;
 
   // Add a started flag to indicate that the work is actually started. Allows
   // us to not do anything until after run_queued_closures() starts.
