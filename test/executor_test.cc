@@ -127,7 +127,7 @@ TEST(ExecutorTest, ErasedExecutors) {
       [&count_down] {count_down--;});
   }
 
-  while (count_down.load() > 0) {
+  while (count_down.load() >= 0) {
     this_thread::sleep_for(chrono::milliseconds(1));
   }
   EXPECT_EQ(NUM_ITER, run_count.load());

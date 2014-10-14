@@ -67,7 +67,7 @@ class thread_pool_executor {
     queue_lock.unlock();
 
     if (notify) {
-      queue_empty_cv_.notify_one();
+      queue_empty_cv_.notify_all();
     }
   }
 

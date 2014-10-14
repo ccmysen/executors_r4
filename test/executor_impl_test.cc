@@ -46,7 +46,8 @@ class max_counter_task {
     }
     if (!release_internal()) {
       // Wait to release until we are the only remaining releaser.
-      cout << "Block, max_concurrency: " << max_concurrency_ << " release count: " << release_count_ << endl;
+      cout << "Block, max_concurrency: " << max_concurrency_
+           << " release count: " << release_count_ << endl;
       release_cv_.wait(count_lock, [this] { return release_count_ == 0; });
     }
     count_lock.unlock();

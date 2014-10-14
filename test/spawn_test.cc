@@ -29,7 +29,7 @@
 using namespace std;
 
 const int MAX_CONCURRENCY = 8;
-const int LOG_MAX_SPAWNS = 18;
+const int LOG_MAX_SPAWNS = 12;
 
 inline void fib() {
   constexpr int MAX_FIB = 4000;
